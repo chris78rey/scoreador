@@ -1,0 +1,23 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Flutter
+mobile/.dart_tool/
+mobile/.idea/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/pubspec.lock
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+engine/bin/
+engine/pkg/
+
