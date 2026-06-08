@@ -1,51 +1,28 @@
-# Scoreador
+# Simulador Montecarlo de Torneos
 
-Arquitectura base para un simulador tactico desacoplado entre Flutter/Dart y un motor nativo en Go.
+Motor Go para simular torneos de futbol usando Montecarlo y distribucion de Poisson.
 
-## Estructura
+El sistema es reutilizable para Mundial, Copa America, Champions, LigaPro u otros torneos. Solo cambian los archivos de entrada: configuracion JSON, tabla lambda CSV y partidos CSV.
 
-- `mobile/`: app Flutter con la interfaz reactiva, sliders de configuracion y render 2D.
-- `engine/`: motor de simulacion en Go, preparado para compilarse como libreria compartida con FFI.
+## Entrada
 
-## Objetivo tecnico
+- `config.json`: reglas del torneo.
+- `matches.csv`: partidos de fase de grupos.
+- `lambda.csv`: tabla generica de conversion de tiros + motivacion a lambda.
 
-La UI no calcula la simulacion. Solo:
-
-- captura parametros tacticos,
-- renderiza el campo y los jugadores,
-- lee el snapshot actual del motor.
-
-El motor Go se encarga de:
-
-- ticks de simulacion,
-- movimiento basico de jugadores y balon,
-- fatiga,
-- estimacion simple de posesion y xG.
-
-## Fase 2: puente en memoria
-
-Ya existe un wrapper CGO en Go que expone una `EngineSession` con memoria nativa continua para:
-
-- coordenadas de 22 jugadores,
-- posicion y velocidad del balon,
-- métricas del tick actual,
-- acceso directo desde Dart FFI sin JSON.
-
-La ruta nativa en Flutter lee directamente `session.frame` desde RAM y convierte ese bloque en un `EngineFrameView` para renderizar cada frame.
-
-### Build nativo Android
-
-Desde `engine/cmd/engine`:
+## Ejecucion
 
 ```bash
-GOOS=android GOARCH=arm64 go build -buildmode=c-shared -o libengine.so main.go
+go run ./cmd/tournament-sim -config examples/demo/config.json -matches examples/demo/matches.csv -lambda examples/demo/lambda.csv -outdir out -seed 42
 ```
 
-En Android, la UI usa ese `libengine.so`. En pruebas locales fuera de Android se usa un mock para no depender del binario nativo.
+## Salida
 
-## Siguiente paso recomendado
+- `summary.csv`
+- `summary.json`
 
-1. Compilar el motor Go como `libengine` para Android/iOS.
-2. Copiar la libreria nativa al paquete Flutter.
-3. Enlazar el build nativo con los targets Android e iOS.
-4. Sustituir la heuristica de simulacion por tu modelo tactico real.
+## Notas
+
+- El sistema usa la fase de grupos para clasificar equipos.
+- La fase eliminatoria se construye de forma dinamica a partir de los clasificados.
+- Si hay empate en knockout, el desempate usa penales simulados por defecto o un desempate aleatorio configurable.

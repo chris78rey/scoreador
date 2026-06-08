@@ -1,0 +1,11 @@
+{
+  "name": "Torneo Demo",
+  "simulations": 69000,
+  "groups": 2,
+  "teams_per_group": 4,
+  "qualified_per_group": 2,
+  "best_thirds": 0,
+  "knockout": true,
+  "knockout_tiebreaker": "penalties",
+  "seed": 42
+}

@@ -1,0 +1,14 @@
+match_id,stage,grupo,equipo_a,equipo_b,tiros_a,tiros_b,motivacion_a,motivacion_b
+1,group,A,Equipo A,Equipo B,7,10,alta,media
+2,group,A,Equipo C,Equipo D,8,3,media,baja
+3,group,A,Equipo A,Equipo C,6,6,media,media
+4,group,A,Equipo B,Equipo D,5,4,baja,media
+5,group,A,Equipo A,Equipo D,9,2,alta,baja
+6,group,A,Equipo B,Equipo C,4,7,media,alta
+7,group,B,Equipo E,Equipo F,7,6,alta,media
+8,group,B,Equipo G,Equipo H,8,3,media,baja
+9,group,B,Equipo E,Equipo G,6,6,media,media
+10,group,B,Equipo F,Equipo H,5,4,baja,media
+11,group,B,Equipo E,Equipo H,9,2,alta,baja
+12,group,B,Equipo F,Equipo G,4,7,media,alta
+
