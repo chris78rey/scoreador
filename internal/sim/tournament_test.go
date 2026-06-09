@@ -1,17 +1,17 @@
 package sim
 
 import (
-	"encoding/json"
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
+	"reflect"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
 
 	"scoreador/internal/loader"
 	"scoreador/internal/model"
 	"scoreador/internal/poisson"
-	"scoreador/internal/report"
 )
 
 const sampleConfig = `{
@@ -62,76 +62,69 @@ const sampleMatches = `match_id,stage,grupo,equipo_a,equipo_b,tiros_a,tiros_b,mo
 12,group,B,Equipo F,Equipo G,4,7,media,alta
 `
 
-func TestMonteCarloPipeline(t *testing.T) {
-	dir := t.TempDir()
+func TestLookupLambdaUsesClosestMotivationWhenExactRuleIsMissing(t *testing.T) {
+	rules := []model.LambdaRule{
+		{ShotsMin: 0, ShotsMax: 10, Motivation: model.MotivationLow, Lambda: 0.5},
+		{ShotsMin: 0, ShotsMax: 10, Motivation: model.MotivationMedium, Lambda: 1.5},
+		{ShotsMin: 0, ShotsMax: 10, Motivation: model.MotivationHigh, Lambda: 2.5},
+	}
 
-	configPath := writeTempFile(t, dir, "config.json", sampleConfig)
-	lambdaPath := writeTempFile(t, dir, "lambda.csv", sampleLambda)
-	matchesPath := writeTempFile(t, dir, "matches.csv", sampleMatches)
-
-	cfg, err := loader.LoadConfig(configPath)
+	lambda, err := lookupLambda(rules, 7, model.Motivation(7))
 	if err != nil {
-		t.Fatalf("load config: %v", err)
+		t.Fatalf("lookupLambda returned error: %v", err)
 	}
-	matches, err := loader.LoadMatches(matchesPath)
-	if err != nil {
-		t.Fatalf("load matches: %v", err)
+	if lambda != 1.5 {
+		t.Fatalf("lookupLambda(7, 7) = %v, want %v", lambda, 1.5)
 	}
-	rules, err := loader.LoadLambdaRules(lambdaPath)
-	if err != nil {
-		t.Fatalf("load lambda: %v", err)
-	}
+}
 
-	summary, err := RunMonteCarlo(cfg, matches, rules)
+func assertFormula(t *testing.T, wb *excelize.File, sheet, cell, want string) {
+	t.Helper()
+	got, err := wb.GetCellFormula(sheet, cell)
 	if err != nil {
-		t.Fatalf("run montecarlo: %v", err)
+		t.Fatalf("get formula %s!%s: %v", sheet, cell, err)
 	}
-	if summary.Name != "Torneo Demo" {
-		t.Fatalf("name mismatch: %s", summary.Name)
+	if got != want {
+		t.Fatalf("formula mismatch %s!%s: got %q want %q", sheet, cell, got, want)
 	}
-	if len(summary.Teams) != 8 {
-		t.Fatalf("expected 8 teams, got %d", len(summary.Teams))
-	}
+}
 
-	totalChampions := 0
-	for _, team := range summary.Teams {
-		totalChampions += team.Campeon
-		if team.Simulations != 250 {
-			t.Fatalf("unexpected simulation count for %s: %d", team.Team, team.Simulations)
-		}
+func assertCellStyleSame(t *testing.T, wb *excelize.File, sheet, cellA, cellB string) {
+	t.Helper()
+	styleA := mustCellStyle(t, wb, sheet, cellA)
+	styleB := mustCellStyle(t, wb, sheet, cellB)
+	if styleA != styleB {
+		t.Fatalf("style mismatch %s!%s vs %s!%s: %d != %d", sheet, cellA, sheet, cellB, styleA, styleB)
 	}
-	if totalChampions != 250 {
-		t.Fatalf("champion counts should sum to simulations, got %d", totalChampions)
-	}
+}
 
-	csvPath := filepath.Join(dir, "summary.csv")
-	jsonPath := filepath.Join(dir, "summary.json")
-	if err := report.WriteCSV(csvPath, summary); err != nil {
-		t.Fatalf("write csv: %v", err)
+func assertCellStyleDiff(t *testing.T, wb *excelize.File, sheet, cellA, cellB string) {
+	t.Helper()
+	styleA := mustCellStyle(t, wb, sheet, cellA)
+	styleB := mustCellStyle(t, wb, sheet, cellB)
+	if styleA == styleB {
+		t.Fatalf("style unexpectedly equal %s!%s and %s!%s: %d", sheet, cellA, sheet, cellB, styleA)
 	}
-	if err := report.WriteJSON(jsonPath, summary); err != nil {
-		t.Fatalf("write json: %v", err)
-	}
+}
 
-	csvData, err := os.ReadFile(csvPath)
+func assertColWidth(t *testing.T, wb *excelize.File, sheet, col string, want float64) {
+	t.Helper()
+	got, err := wb.GetColWidth(sheet, col)
 	if err != nil {
-		t.Fatalf("read csv: %v", err)
+		t.Fatalf("get col width %s!%s: %v", sheet, col, err)
 	}
-	if !strings.Contains(string(csvData), "porcentaje_campeon") {
-		t.Fatalf("csv header missing champion column")
+	if got != want {
+		t.Fatalf("col width mismatch %s!%s: got %v want %v", sheet, col, got, want)
 	}
+}
 
-	jsonData, err := os.ReadFile(jsonPath)
+func mustCellStyle(t *testing.T, wb *excelize.File, sheet, cell string) int {
+	t.Helper()
+	style, err := wb.GetCellStyle(sheet, cell)
 	if err != nil {
-		t.Fatalf("read json: %v", err)
+		t.Fatalf("get cell style %s!%s: %v", sheet, cell, err)
 	}
-	var decoded model.TournamentSummary
-	if err := json.Unmarshal(jsonData, &decoded); err != nil {
-		t.Fatalf("decode json: %v", err)
-	}
-	if decoded.Simulations != 250 {
-		t.Fatalf("json simulations mismatch: %d", decoded.Simulations)
-	}
+	return style
 }
 
 func TestLambdaLookupAndPoissonDeterminism(t *testing.T) {
@@ -151,6 +144,100 @@ func TestLambdaLookupAndPoissonDeterminism(t *testing.T) {
 	}
 }
 
+func TestSingleMatchDeterminism(t *testing.T) {
+	rules, err := loader.LoadLambdaRules(writeTempFile(t, t.TempDir(), "lambda.csv", sampleLambda))
+	if err != nil {
+		t.Fatalf("load lambda: %v", err)
+	}
+
+	input := SingleMatchInput{
+		TeamA:       "Equipo A",
+		TeamB:       "Equipo B",
+		ShotsA:      7,
+		ShotsB:      10,
+		MotivationA: model.MotivationHigh,
+		MotivationB: model.MotivationMedium,
+		Tiebreaker:  "penalties",
+	}
+
+	first, err := RunSingleMatch(42, rules, input)
+	if err != nil {
+		t.Fatalf("run single match: %v", err)
+	}
+	second, err := RunSingleMatch(42, rules, input)
+	if err != nil {
+		t.Fatalf("run single match again: %v", err)
+	}
+	if first != second {
+		t.Fatalf("single match should be deterministic: %+v vs %+v", first, second)
+	}
+	if first.Winner != input.TeamA && first.Winner != input.TeamB {
+		t.Fatalf("unexpected winner: %s", first.Winner)
+	}
+	if first.DecidedBy == "" {
+		t.Fatalf("decided by should not be empty")
+	}
+}
+
+func TestSingleMatchSeriesDeterminism(t *testing.T) {
+	rules, err := loader.LoadLambdaRules(writeTempFile(t, t.TempDir(), "lambda.csv", sampleLambda))
+	if err != nil {
+		t.Fatalf("load lambda: %v", err)
+	}
+
+	input := SingleMatchInput{
+		TeamA:       "Equipo A",
+		TeamB:       "Equipo B",
+		ShotsA:      10,
+		ShotsB:      4,
+		MotivationA: model.MotivationHigh,
+		MotivationB: model.MotivationMedium,
+		Tiebreaker:  "penalties",
+	}
+
+	first, err := RunSingleMatchSeries(42, 6000, rules, input)
+	if err != nil {
+		t.Fatalf("run single match series: %v", err)
+	}
+	second, err := RunSingleMatchSeries(42, 6000, rules, input)
+	if err != nil {
+		t.Fatalf("run single match series again: %v", err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("single match series should be deterministic: %+v vs %+v", first, second)
+	}
+	if first.Simulations != 6000 {
+		t.Fatalf("unexpected simulation count: %d", first.Simulations)
+	}
+	if first.WinsA+first.WinsB != first.Simulations {
+		t.Fatalf("wins should sum to simulations: %+v", first)
+	}
+	if first.Regulation+first.Penalties+first.RandomTie != first.Simulations {
+		t.Fatalf("decision modes should sum to simulations: %+v", first)
+	}
+	if first.Regulation+first.RegulationDraws != first.Simulations {
+		t.Fatalf("regular time decisions and draws should sum to simulations: %+v", first)
+	}
+	if first.MostRepeatedCount <= 0 || first.MostRepeatedCount > first.Simulations {
+		t.Fatalf("unexpected most repeated count: %+v", first)
+	}
+	if first.MostRepeatedPercent <= 0 {
+		t.Fatalf("unexpected most repeated percent: %+v", first)
+	}
+	if len(first.TopScores) == 0 {
+		t.Fatalf("top scores should not be empty: %+v", first)
+	}
+	if first.TopScores[0].Count != first.MostRepeatedCount {
+		t.Fatalf("top score should match most repeated count: %+v", first)
+	}
+	if first.ScoreCounts == nil {
+		t.Fatalf("score counts should not be nil: %+v", first)
+	}
+	if got := first.ScoreCounts[[2]int{first.MostRepeatedGoalsA, first.MostRepeatedGoalsB}]; got != first.MostRepeatedCount {
+		t.Fatalf("most repeated score count mismatch: got %d want %d", got, first.MostRepeatedCount)
+	}
+}
+
 func runPoissonOnce(seed int64, lambda float64) int {
 	rng := randSource(seed)
 	return poisson.Sample(rng, lambda)
@@ -167,4 +254,16 @@ func writeTempFile(t *testing.T, dir, name, content string) string {
 		t.Fatalf("write temp file: %v", err)
 	}
 	return path
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

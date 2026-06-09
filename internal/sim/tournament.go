@@ -41,7 +41,7 @@ func RunMonteCarlo(cfg model.Config, matches []model.MatchInput, rules []model.L
 		return model.TournamentSummary{}, err
 	}
 
-	profiles, teamNames := buildProfiles(matches)
+	_, teamNames := buildProfiles(matches)
 	tracker := newTracker(teamNames, cfg.Simulations)
 
 	for sim := 0; sim < cfg.Simulations; sim++ {
@@ -60,13 +60,6 @@ func RunMonteCarlo(cfg model.Config, matches []model.MatchInput, rules []model.L
 			tracker.AddQualified(q.Team)
 		}
 
-		if cfg.Knockout && len(qualifiers) > 1 {
-			champion, err := simulateKnockout(rng, qualifiers, profiles, rules, cfg.KnockoutTiebreaker, tracker)
-			if err != nil {
-				return model.TournamentSummary{}, err
-			}
-			tracker.AddChampion(champion)
-		}
 	}
 
 	return tracker.Summary(cfg.Name, cfg.Simulations), nil
@@ -165,9 +158,6 @@ func modeMotivation(values map[model.Motivation]int) model.Motivation {
 		if count > best.count || (count == best.count && mot > best.mot) {
 			best = pair{mot: mot, count: count}
 		}
-	}
-	if best.mot == "" {
-		return model.MotivationMedium
 	}
 	return best.mot
 }
@@ -471,12 +461,37 @@ func penaltySuccessProbability(lambda float64) float64 {
 }
 
 func lookupLambda(rules []model.LambdaRule, shots int, motivation model.Motivation) (float64, error) {
+	var (
+		bestLambda float64
+		bestDelta  = int(^uint(0) >> 1)
+		found      bool
+	)
+
 	for _, rule := range rules {
-		if shots >= rule.ShotsMin && shots <= rule.ShotsMax && rule.Motivation == motivation {
+		if shots < rule.ShotsMin || shots > rule.ShotsMax {
+			continue
+		}
+		if rule.Motivation == motivation {
 			return rule.Lambda, nil
 		}
+		delta := absInt(int(rule.Motivation) - int(motivation))
+		if !found || delta < bestDelta || (delta == bestDelta && rule.Motivation > motivation) {
+			bestLambda = rule.Lambda
+			bestDelta = delta
+			found = true
+		}
+	}
+	if found {
+		return bestLambda, nil
 	}
 	return 0, fmt.Errorf("no se encontro lambda para tiros=%d motivacion=%s", shots, motivation)
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func roundLabel(size int) string {

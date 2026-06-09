@@ -2,32 +2,50 @@ package model
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
-type Motivation string
+type Motivation int
 
 const (
-	MotivationLow    Motivation = "baja"
-	MotivationMedium Motivation = "media"
-	MotivationHigh   Motivation = "alta"
+	MotivationLow    Motivation = 0
+	MotivationMedium Motivation = 5
+	MotivationHigh   Motivation = 10
 )
 
 func ParseMotivation(value string) (Motivation, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(MotivationLow):
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "baja":
 		return MotivationLow, nil
-	case string(MotivationMedium):
+	case "media":
 		return MotivationMedium, nil
-	case string(MotivationHigh):
+	case "alta":
 		return MotivationHigh, nil
 	default:
-		return "", fmt.Errorf("motivacion invalida: %q", value)
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("motivacion invalida: %q", value)
+		}
+		return MotivationFromInt(n)
 	}
 }
 
 func (m Motivation) String() string {
-	return string(m)
+	return strconv.Itoa(int(m))
+}
+
+func (m Motivation) Valid() bool {
+	return m >= 0 && m <= 10
+}
+
+func MotivationFromInt(value int) (Motivation, error) {
+	motivation := Motivation(value)
+	if !motivation.Valid() {
+		return 0, fmt.Errorf("motivacion invalida: %d", value)
+	}
+	return motivation, nil
 }
 
 type Config struct {
